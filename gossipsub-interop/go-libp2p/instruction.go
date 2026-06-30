@@ -96,6 +96,10 @@ func (SetTopicValidationDelayInstruction) isInstruction() {}
 type InitGossipSubInstruction struct {
 	Type            string                 `json:"type"`
 	GossipSubParams pubsub.GossipSubParams `json:"gossipSubParams"`
+	// EnableTopicStreams advertises support for the Topic Streams extension
+	// (topic-streams.md). When set, topic scoped messages are sent on dedicated
+	// per-topic streams with any peer that also advertises support.
+	EnableTopicStreams bool `json:"enableTopicStreams"`
 }
 
 // isInstruction implements the ScriptInstruction interface
@@ -184,8 +188,9 @@ func UnmarshalScriptInstruction(data []byte) (ScriptInstruction, error) {
 
 	case "initGossipSub":
 		var tempInstruction struct {
-			Type            string          `json:"type"`
-			GossipSubParams json.RawMessage `json:"gossipSubParams"`
+			Type               string          `json:"type"`
+			GossipSubParams    json.RawMessage `json:"gossipSubParams"`
+			EnableTopicStreams bool            `json:"enableTopicStreams"`
 		}
 		if err := json.Unmarshal(data, &tempInstruction); err != nil {
 			return nil, err
@@ -199,8 +204,9 @@ func UnmarshalScriptInstruction(data []byte) (ScriptInstruction, error) {
 			return nil, err
 		}
 		return InitGossipSubInstruction{
-			Type:            tempInstruction.Type,
-			GossipSubParams: params,
+			Type:               tempInstruction.Type,
+			GossipSubParams:    params,
+			EnableTopicStreams: tempInstruction.EnableTopicStreams,
 		}, nil
 
 	default:

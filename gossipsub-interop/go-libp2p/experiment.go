@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p-pubsub/partialmessages"
 	pubsub_pb "github.com/libp2p/go-libp2p-pubsub/pb"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -219,13 +220,17 @@ func (n *scriptedNode) runInstruction(ctx context.Context, instruction ScriptIns
 			},
 		}
 
-		psOpts := pubsubOptions(n.slogger, a.GossipSubParams, pme)
+		psOpts := pubsubOptions(n.slogger, a.GossipSubParams, pme, a.EnableTopicStreams)
 		ps, err := pubsub.NewGossipSub(ctx, n.h, psOpts...)
 		if err != nil {
 			return err
 		}
 		n.pubsub = ps
 		n.partialMsgMgr.start(n.slogger, ps)
+		if a.EnableTopicStreams {
+			n.slogger.Info("Topic Streams extension enabled")
+			n.startTopicStreamInspector(ctx)
+		}
 	case ConnectInstruction:
 		for _, targetNodeId := range a.ConnectTo {
 			err := n.connector.ConnectTo(ctx, n.h, targetNodeId)
@@ -331,6 +336,53 @@ func (n *scriptedNode) runInstruction(ctx context.Context, instruction ScriptIns
 	}
 
 	return nil
+}
+
+// startTopicStreamInspector periodically inspects the libp2p connections and
+// logs, per peer, how many open streams use the Topic Streams protocol
+// (/gsts/v0beta), split by direction. Because the implementation opens exactly
+// one topic stream per topic per direction, a peer showing N outbound topic
+// streams is actively sending N distinct topics on N distinct streams. This
+// telemetry lets checks/topic_streams_multistream.py confirm the extension is
+// really splitting topics across streams.
+func (n *scriptedNode) startTopicStreamInspector(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				maxOut := 0
+				for _, c := range n.h.Network().Conns() {
+					var out, in int
+					for _, s := range c.GetStreams() {
+						if s.Protocol() == pubsub.TopicStreamsProtocolID {
+							if s.Stat().Direction == network.DirOutbound {
+								out++
+							} else {
+								in++
+							}
+						}
+					}
+					if out > 0 || in > 0 {
+						n.slogger.Info("Topic stream count",
+							"peer", c.RemotePeer().String(),
+							"outbound_gsts_streams", out,
+							"inbound_gsts_streams", in,
+						)
+					}
+					if out > maxOut {
+						maxOut = out
+					}
+				}
+				if maxOut >= 2 {
+					n.slogger.Info("Multiple topic streams to a single peer", "max_outbound_gsts_streams", maxOut)
+				}
+			}
+		}
+	}()
 }
 
 func (n *scriptedNode) getTopic(topicStr string, partial bool) (*pubsub.Topic, error) {
