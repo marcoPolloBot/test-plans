@@ -28,7 +28,9 @@ type HostConnector interface {
 }
 
 type incomingPartialRPC struct {
-	pubsub_pb.PartialMessagesExtension
+	// Hold the protobuf message by pointer: it embeds a sync.Mutex (via
+	// protoimpl.MessageState) and must not be copied by value.
+	*pubsub_pb.PartialMessagesExtension
 	from peer.ID
 }
 
@@ -207,7 +209,7 @@ func (n *scriptedNode) runInstruction(ctx context.Context, instruction ScriptIns
 				peerStates[from] = pState
 				n.partialMsgMgr.incomingRPC <- incomingPartialRPC{
 					from:                     from,
-					PartialMessagesExtension: *rpc,
+					PartialMessagesExtension: rpc,
 				}
 
 				return nil
