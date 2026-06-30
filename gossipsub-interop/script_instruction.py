@@ -78,6 +78,11 @@ class InitGossipSub(BaseModel):
 
     type: Literal["initGossipSub"] = "initGossipSub"
     gossipSubParams: GossipSubParams
+    # If set, the node MUST advertise support for the Topic Streams extension
+    # (https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/topic-streams.md)
+    # in its ControlExtensions message. Topic Streams is then used with any peer
+    # that also advertises support for it. When unset, the extension is disabled.
+    enableTopicStreams: bool | None = None
 
 
 class GossipSubParams(BaseModel):

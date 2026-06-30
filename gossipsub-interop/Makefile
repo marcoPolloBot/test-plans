@@ -35,7 +35,7 @@ clean:
 	rm latest
 	rm plots/* || true
 
-test: test-partial-messages test-subnet-blob
+test: test-partial-messages test-subnet-blob test-topic-streams
 
 test-partial-messages:
 	# Testing partial messages
@@ -95,6 +95,17 @@ test-subnet-blob:
 	@echo "Testing all"
 	uv run run.py --node_count 32 --composition go rust jvm nim && uv run checks/subnet_blob_msg.py latest/
 
+test-topic-streams:
+	# Testing the Topic Streams extension scenario.
+	# NOTE: implementations do not implement the extension yet; they ignore the
+	# enableTopicStreams flag and fall back to the regular gossipsub stream, so
+	# delivery (and this reliability check) still works end-to-end.
+	@echo "Testing topic streams (go)"
+	uv run run.py --node_count 32 --composition go --scenario "topic-streams" && uv run checks/topic_streams.py latest/
+
+	@echo "Testing topic streams (rust-and-go)"
+	uv run run.py --node_count 32 --composition rust go --scenario "topic-streams" && uv run checks/topic_streams.py latest/
+
 test-go:
 	# Testing partial messages
 	@echo "Testing partial messages"
@@ -120,4 +131,4 @@ test-rust-only:
 
 
 
-.PHONY: binaries all clean test test-rust-only test-go test-subnet-blob test-partial-messages
+.PHONY: binaries all clean test test-rust-only test-go test-subnet-blob test-partial-messages test-topic-streams

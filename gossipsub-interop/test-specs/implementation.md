@@ -50,6 +50,17 @@ Implementations MUST handle each instruction. See `script_instruction.py` for
 the instructions you need to support. The instructions are included in the
 ExperimentParams.script passed in via the `params.json` file.
 
+#### initGossipSub extension flags
+
+The `initGossipSub` instruction MAY include an `enableTopicStreams` boolean. When
+it is `true`, the node MUST advertise support for the [Topic Streams
+extension](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/topic-streams.md)
+in its `ControlExtensions` message, which causes the extension to be used with
+any peer that also advertises support. When the field is absent or `false`, the
+extension MUST be disabled. Implementations that do not yet support the extension
+SHOULD ignore the field (delivery still works over the regular gossipsub stream),
+but they MUST NOT fail to parse `params.json` because of it.
+
 ## Output
 
 Implementations MUST reserve STDOUT as their output channel and use STDERR for

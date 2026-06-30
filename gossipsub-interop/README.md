@@ -86,6 +86,27 @@ uv run run.py --node_count 2 --composition go --scenario "partial-messages" && u
 
 That command runs the shadow simulation and then verifies the stdout logs have the expected message.
 
+### Topic Streams extension
+
+The `topic-streams` scenario exercises the [Topic Streams
+extension](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/topic-streams.md).
+The extension moves topic scoped application messages onto separate long lived
+streams (one per topic, per direction) to avoid head-of-line blocking between
+topics and to drop the per-message topic name overhead. The scenario subscribes
+every node to two topics and publishes large "blob" messages and small,
+latency sensitive messages concurrently, the exact situation the extension is
+designed to improve. Nodes are told to advertise the extension via the
+`enableTopicStreams` flag on the `initGossipSub` instruction.
+
+```bash
+uv run run.py --node_count 8 --composition go --scenario "topic-streams" && uv run checks/topic_streams.py latest/
+```
+
+Note: the implementations do not implement this extension yet. They ignore the
+`enableTopicStreams` flag for now and fall back to the regular gossipsub stream,
+so the scenario still runs end-to-end and the reliability check passes. Once an
+implementation negotiates the extension, the same scenario will exercise it.
+
 ## Tests
 
 ```bash

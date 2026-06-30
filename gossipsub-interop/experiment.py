@@ -20,7 +20,9 @@ class ExperimentParams:
 
 
 def spread_heartbeat_delay(
-    node_count: int, template_gs_params: GossipSubParams
+    node_count: int,
+    template_gs_params: GossipSubParams,
+    enable_topic_streams: bool = False,
 ) -> List[ScriptInstruction]:
     instructions = []
     initial_delay = timedelta(seconds=0.1)
@@ -32,7 +34,10 @@ def spread_heartbeat_delay(
         instructions.append(
             script_instruction.IfNodeIDEquals(
                 nodeID=i,
-                instruction=script_instruction.InitGossipSub(gossipSubParams=gs_params),
+                instruction=script_instruction.InitGossipSub(
+                    gossipSubParams=gs_params,
+                    enableTopicStreams=True if enable_topic_streams else None,
+                ),
             )
         )
     return instructions
@@ -246,6 +251,73 @@ def partial_message_fanout_scenario(
     return instructions
 
 
+def topic_streams_scenario(
+    disable_gossip: bool, node_count: int
+) -> List[ScriptInstruction]:
+    """Exercise the Topic Streams extension.
+
+    See https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/topic-streams.md
+
+    The extension moves topic scoped application messages onto separate long
+    lived streams (one per topic, per direction). The motivation is to avoid
+    head-of-line blocking between topics: on the single gossipsub stream a large
+    message on one topic delays small, latency sensitive messages on another.
+
+    This scenario reproduces that situation. Every node subscribes to two topics:
+    a "blob" topic carrying large messages and a "small" topic carrying tiny,
+    latency sensitive messages. The two topics are published to concurrently so
+    that, without Topic Streams, the small messages would queue behind the large
+    blobs. With the extension negotiated, each topic gets its own stream and the
+    small messages should not be delayed by the blobs.
+    """
+    instructions: List[ScriptInstruction] = []
+    gs_params = GossipSubParams()
+    if disable_gossip:
+        gs_params.Dlazy = 0
+        gs_params.GossipFactor = 0
+    instructions.extend(
+        spread_heartbeat_delay(node_count, gs_params, enable_topic_streams=True)
+    )
+
+    number_of_conns_per_node = 20
+    if number_of_conns_per_node >= node_count:
+        number_of_conns_per_node = node_count - 1
+    instructions.extend(random_network_mesh(node_count, number_of_conns_per_node))
+
+    blob_topic = "blob-subnet"
+    small_topic = "small-msgs"
+
+    # Mock blob validation latency, like the subnet-blob-msg scenario. A column
+    # takes around 5ms according to data gathered by lighthouse.
+    instructions.append(
+        script_instruction.SetTopicValidationDelay(
+            topicID=blob_topic, delaySeconds=0.005
+        )
+    )
+
+    # Every node subscribes to both topics.
+    instructions.append(script_instruction.SubscribeToTopic(topicID=blob_topic))
+    instructions.append(script_instruction.SubscribeToTopic(topicID=small_topic))
+
+    blob_count = 48
+    blob_message_size = 2 * 1024 * blob_count
+    small_message_size = 128
+    num_rounds = 16
+
+    instructions.extend(
+        interleaved_publish_every_12s(
+            node_count,
+            num_rounds,
+            blob_topic=blob_topic,
+            blob_message_size=blob_message_size,
+            small_topic=small_topic,
+            small_message_size=small_message_size,
+        )
+    )
+
+    return instructions
+
+
 def scenario(
     scenario_name: str, node_count: int, disable_gossip: bool
 ) -> ExperimentParams:
@@ -287,6 +359,8 @@ def scenario(
                     node_count, num_messages, message_size, [topic]
                 )
             )
+        case "topic-streams":
+            instructions = topic_streams_scenario(disable_gossip, node_count)
         case "simple-fanout":
             gs_params = GossipSubParams()
             if disable_gossip:
@@ -422,6 +496,67 @@ def random_publish_every_12s(
             )
         )
         elapsed_seconds += 12  # Add 12 seconds for each subsequent message
+        instructions.append(
+            script_instruction.WaitUntil(elapsedSeconds=elapsed_seconds)
+        )
+
+    elapsed_seconds += 30  # wait a bit more to allow all messages to flush
+    instructions.append(script_instruction.WaitUntil(elapsedSeconds=elapsed_seconds))
+
+    return instructions
+
+
+def interleaved_publish_every_12s(
+    node_count: int,
+    num_rounds: int,
+    blob_topic: str,
+    blob_message_size: int,
+    small_topic: str,
+    small_message_size: int,
+) -> List[ScriptInstruction]:
+    """Publish a large blob and a small message at the same instant each round.
+
+    Each round a random node publishes a large message on ``blob_topic`` and,
+    at the same simulated time, another random node publishes a small message on
+    ``small_topic``. Publishing them concurrently is what surfaces head-of-line
+    blocking on a single stream: the Topic Streams extension is expected to keep
+    the small messages flowing independently of the large blobs.
+
+    Message IDs are unique across both topics so the delivery analysis can tell
+    them apart: blob messages use even IDs and small messages use odd IDs.
+    """
+    instructions: List[ScriptInstruction] = []
+
+    # Start at 120 seconds (2 minutes) to allow for setup time
+    elapsed_seconds = 120
+    instructions.append(script_instruction.WaitUntil(elapsedSeconds=elapsed_seconds))
+
+    for i in range(num_rounds):
+        blob_publisher = random.randint(0, node_count - 1)
+        instructions.append(
+            script_instruction.IfNodeIDEquals(
+                nodeID=blob_publisher,
+                instruction=script_instruction.Publish(
+                    messageID=2 * i,
+                    topicID=blob_topic,
+                    messageSizeBytes=blob_message_size,
+                ),
+            )
+        )
+
+        small_publisher = random.randint(0, node_count - 1)
+        instructions.append(
+            script_instruction.IfNodeIDEquals(
+                nodeID=small_publisher,
+                instruction=script_instruction.Publish(
+                    messageID=2 * i + 1,
+                    topicID=small_topic,
+                    messageSizeBytes=small_message_size,
+                ),
+            )
+        )
+
+        elapsed_seconds += 12  # Add 12 seconds for each subsequent round
         instructions.append(
             script_instruction.WaitUntil(elapsedSeconds=elapsed_seconds)
         )
