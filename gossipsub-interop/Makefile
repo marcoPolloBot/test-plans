@@ -97,12 +97,15 @@ test-subnet-blob:
 
 test-topic-streams:
 	# Testing the Topic Streams extension scenario.
-	# NOTE: implementations do not implement the extension yet; they ignore the
-	# enableTopicStreams flag and fall back to the regular gossipsub stream, so
-	# delivery (and this reliability check) still works end-to-end.
+	# go-libp2p uses the fork with the extension (see go-libp2p/go.mod replace),
+	# so it must split the two topics across separate /gsts/v0beta streams: the
+	# multistream check asserts that. The reliability check confirms delivery.
 	@echo "Testing topic streams (go)"
-	uv run run.py --node_count 32 --composition go --scenario "topic-streams" && uv run checks/topic_streams.py latest/
+	uv run run.py --node_count 32 --composition go --scenario "topic-streams" && uv run checks/topic_streams.py latest/ && uv run checks/topic_streams_multistream.py latest/
 
+	# Other implementations do not implement the extension yet; they ignore the
+	# enableTopicStreams flag and fall back to the regular gossipsub stream, so
+	# delivery still works end-to-end (no multistream assertion here).
 	@echo "Testing topic streams (rust-and-go)"
 	uv run run.py --node_count 32 --composition rust go --scenario "topic-streams" && uv run checks/topic_streams.py latest/
 

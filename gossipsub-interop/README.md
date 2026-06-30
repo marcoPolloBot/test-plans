@@ -99,13 +99,23 @@ designed to improve. Nodes are told to advertise the extension via the
 `enableTopicStreams` flag on the `initGossipSub` instruction.
 
 ```bash
-uv run run.py --node_count 8 --composition go --scenario "topic-streams" && uv run checks/topic_streams.py latest/
+uv run run.py --node_count 8 --composition go --scenario "topic-streams" \
+  && uv run checks/topic_streams.py latest/ \
+  && uv run checks/topic_streams_multistream.py latest/
 ```
 
-Note: the implementations do not implement this extension yet. They ignore the
-`enableTopicStreams` flag for now and fall back to the regular gossipsub stream,
-so the scenario still runs end-to-end and the reliability check passes. Once an
-implementation negotiates the extension, the same scenario will exercise it.
+`go-libp2p` implements this extension via a fork
+([marcoPolloBot/go-libp2p-pubsub@cursor/topic-streams-impl-7f69](https://github.com/marcoPolloBot/go-libp2p-pubsub/tree/cursor/topic-streams-impl-7f69),
+wired in through a `replace` directive in `go-libp2p/go.mod`). With the extension
+negotiated it opens one `/gsts/v0beta` stream per topic, per direction.
+`checks/topic_streams_multistream.py` asserts that nodes open multiple concurrent
+topic streams (one per topic) to a peer, and `checks/topic_streams.py` confirms
+reliable delivery.
+
+The other implementations do not implement the extension yet. They ignore the
+`enableTopicStreams` flag and fall back to the regular gossipsub stream, so the
+scenario still runs end-to-end and the reliability check passes. Once they
+negotiate the extension, the same scenario will exercise it.
 
 ## Tests
 
