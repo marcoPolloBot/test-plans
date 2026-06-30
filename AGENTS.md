@@ -58,15 +58,19 @@ work inside this Firecracker VM. Do not change that.
   [Shadow](https://shadow.github.io/) network simulator. The required toolchains
   are pre-installed in the VM snapshot (not by the update script):
   - **Shadow 3.3.0** → `~/.local/bin/shadow`
-  - **Go 1.24** → `/usr/local/go-1.24/bin` (the repo `go.mod` needs >=1.24.1; the
-    default `go` on PATH is 1.22 and **will fail** to build — Go 1.24 must come
-    first on PATH)
+  - **Go** → `/usr/local/go/bin` (go1.26.4; the repo `go.mod` only needs
+    >=1.24.1). This is the durable default `go` via `~/.bashrc`, overriding the
+    apt-installed Go 1.22 at `/usr/bin/go`. (The apt 1.22 build of go-libp2p
+    **fails**, so the newer Go must stay first on PATH.)
   - **Nim** → `~/.nimble/bin`; **Rust** (rustup `stable`, currently 1.96, needed
     for `edition2024`); **JDK 21** (system)
 - **Gotcha:** `run.py` (real, non-`--dry-run`) calls `make binaries` on every
-  invocation, so *all four* toolchains must be on PATH for any test run, e.g.:
+  invocation, so *all four* toolchains must be on PATH for any test run. `go`,
+  `nim`, and `cargo` are already on PATH via `~/.bashrc`; only Shadow/uv
+  (`~/.local/bin`) needs the env file. A login shell already has everything; a
+  minimal env can use:
   ```bash
-  export PATH=/usr/local/go-1.24/bin:$HOME/.local/bin:$HOME/.nimble/bin:/usr/local/cargo/bin:$PATH
+  export PATH=/usr/local/go/bin:$HOME/.local/bin:$HOME/.nimble/bin:/usr/local/cargo/bin:$PATH
   ```
   `make binaries` is incremental: the nim binary (a file target with no
   prerequisites) is only built once, but go/rust/jvm are relinked each run.
